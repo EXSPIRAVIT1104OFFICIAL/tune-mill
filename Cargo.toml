@@ -1,0 +1,14 @@
+[package]
+name = "tune-mill"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = "0.10.1"
+bevy_midi = "0.6.0"
+bevy_proto = "0.9.0"
+bevy_tweening = "0.7.0"
+midir = "0.9.1"
+winit = "0.28.3"
