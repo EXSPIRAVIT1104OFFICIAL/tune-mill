@@ -198,11 +198,9 @@ fn setup_splash(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ))
                 .insert(TextLayerHider);
         });
-    println!("start");
 }
 
 fn setup_home() {
-    println!("home");
 }
 
 fn check_state_tween_complete(
