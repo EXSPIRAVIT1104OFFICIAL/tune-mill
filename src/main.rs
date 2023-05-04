@@ -1,13 +1,20 @@
+mod lens;
 mod styles;
 
 use bevy::{
     prelude::*,
+    time::Stopwatch,
     window::{PresentMode, WindowPlugin},
     winit::WinitSettings,
 };
+use bevy_tweening::{lens::*, *};
+use lens::*;
+use num_enum::TryFromPrimitive;
+use std::{convert::TryFrom, time::Duration};
 use styles::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, States)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, States, TryFromPrimitive)]
+#[repr(usize)]
 pub enum AppState {
     #[default]
     Splash,
@@ -26,11 +33,23 @@ struct Grid;
 #[derive(Component)]
 struct MainText;
 
+#[derive(Component)]
+struct SubText;
+#[derive(Component)]
+struct TextLayerHider;
+
+#[derive(Component, Deref, DerefMut)]
+pub struct CustomTimer(Timer);
+
+// 0: background
+// 1: grid
+// 2: text layer
+// 3: text layer hider
+
 fn main() {
     App::new()
         .insert_resource(Msaa::Sample4)
-        .insert_resource(ClearColor(Color::hex("#3A3A3C").unwrap()))
-        .insert_resource(WinitSettings::desktop_app())
+        .insert_resource(ClearColor(color(GREY)))
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -48,8 +67,13 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugin(TweeningPlugin)
         .add_state::<AppState>()
         .add_startup_system(setup)
+        .add_system(component_animator_system::<BackgroundColor>)
+        .add_system(setup_splash.in_schedule(OnEnter(AppState::Splash)))
+        .add_system(setup_home.in_schedule(OnEnter(AppState::Home)))
+        .add_system(check_state_tween_complete)
         .run();
 }
 
@@ -58,66 +82,142 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands
         .spawn(NodeBundle {
-            style: MAIN_TEXT_STYLE,
+            style: CENTER,
+            z_index: ZIndex::Global(0),
             ..default()
         })
         .with_children(|parent| {
-            parent.spawn(
-                TextBundle::from_section(
-                    "TUNE MILL",
-                    TextStyle {
-                        font: asset_server.load("fonts/PPMori-Regular.otf"),
-                        font_size: 40.,
-                        color: color(WHITE),
-                    },
-                )
-                .with_text_alignment(TextAlignment::Center)
-                .with_style(Style {
-                    position: UiRect {
-                        bottom: Val::Px(2.5),
+            parent
+                .spawn(ImageBundle {
+                    image: UiImage {
+                        texture: asset_server.load("background.png"),
                         ..default()
                     },
                     ..default()
-                }),
-            );
+                })
+                .insert(Background);
+        });
 
-            parent.spawn(
-                TextBundle::from_section(
-                    "TM",
-                    TextStyle {
-                        font: asset_server.load("fonts/PPMori-Extralight.otf"),
-                        font_size: 20.,
-                        color: color(LIGHT_GREY),
+    commands
+        .spawn(NodeBundle {
+            style: CENTER,
+            z_index: ZIndex::Global(1),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent
+                .spawn(ImageBundle {
+                    image: UiImage {
+                        texture: asset_server.load("grid.png"),
+                        ..default()
                     },
+                    background_color: BackgroundColor(Color::NONE),
+                    ..default()
+                })
+                .insert(Grid);
+        });
+}
+
+fn setup_splash(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn(NodeBundle {
+            style: CENTER_FLEX,
+            z_index: ZIndex::Global(2),
+            ..default()
+        })
+        .with_children(|parent| {
+            parent
+                .spawn(
+                    TextBundle::from_section(
+                        "TUNE MILL",
+                        TextStyle {
+                            font: asset_server.load("fonts/PPMori-Regular.otf"),
+                            font_size: 40.,
+                            color: color(WHITE),
+                        },
+                    )
+                    .with_text_alignment(TextAlignment::Center)
+                    .with_style(MAIN_TEXT_OFFSET),
                 )
-                .with_text_alignment(TextAlignment::Center),
-            );
-        })
-        .insert(MainText);
+                .insert(MainText);
+
+            parent
+                .spawn(
+                    TextBundle::from_section(
+                        "TM",
+                        TextStyle {
+                            font: asset_server.load("fonts/PPMori-Extralight.otf"),
+                            font_size: 20.,
+                            color: color(LIGHT_GREY),
+                        },
+                    )
+                    .with_text_alignment(TextAlignment::Center),
+                )
+                .insert(SubText);
+        });
+
+    let start = Tween::new(
+        EaseFunction::QuinticInOut,
+        std::time::Duration::from_secs(2),
+        BackgoundColorLens {
+            start: Color::WHITE,
+            end: Color::NONE,
+        },
+    )
+    .with_repeat_count(RepeatCount::Finite(1));
+    let end = Tween::new(
+        EaseFunction::QuinticInOut,
+        std::time::Duration::from_secs(2),
+        BackgoundColorLens {
+            start: Color::NONE,
+            end: Color::WHITE,
+        },
+    )
+    .with_repeat_count(RepeatCount::Finite(1))
+    .with_completed_event(AppState::Home as u64);
+    let seq = start.then(end);
 
     commands
-        .spawn(SpriteBundle {
-            sprite: Sprite {
-                // Alpha channel of the color controls transparency.
-                color: Color::rgba(1., 1., 1., 1.),
-                ..default()
-            },
-            texture: asset_server.load("grid.png"),
-            transform: Transform::from_xyz(0., 0., 2.),
+        .spawn(NodeBundle {
+            style: CENTER,
+            z_index: ZIndex::Global(3),
             ..default()
         })
-        .insert(Grid);
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    ImageBundle {
+                        image: UiImage {
+                            texture: asset_server.load("background.png"),
+                            ..default()
+                        },
+                        background_color: BackgroundColor(Color::NONE),
+                        ..default()
+                    },
+                    Animator::<BackgroundColor>::new(seq),
+                ))
+                .insert(TextLayerHider);
+        });
+    println!("start");
+}
 
-    commands
-        .spawn(SpriteBundle {
-            sprite: Sprite {
-                // Alpha channel of the color controls transparency.
-                color: Color::rgba(1., 1., 1., 1.),
-                ..default()
-            },
-            texture: asset_server.load("background.png"),
-            transform: Transform::from_xyz(0., 0., 1.),
-            ..default()
-        })
-        .insert(Background);
+fn setup_home() {
+    println!("home");
+}
+
+fn check_state_tween_complete(
+    mut reader: EventReader<TweenCompleted>,
+    app_state: Res<State<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    for event in reader.iter() {
+        match AppState::try_from(event.user_data as usize) {
+            Ok(state) if app_state.0 != state => {
+                next_state.set(state.clone());
+                println!("switching from {:?} to {:?}", app_state.0, state.clone());
+            }
+            Ok(_) => println!("already in state: {:?}", app_state.0),
+            Err(_) => println!("no such state: {:?}", app_state.0),
+        }
+    }
 }
