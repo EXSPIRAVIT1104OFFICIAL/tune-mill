@@ -42,6 +42,8 @@ pub const WHITE: &str = "#F2F2F7";
 pub const LIGHT_GREY: &str = "#8E8E93";
 pub const GREY: &str = "#3A3A3C";
 pub const BLACK: &str = "#1C1C1E";
+pub const NULL_WHITE: &str = "#FFFFFF00";
+pub const PURE_WHITE: &str = "#FFFFFF";
 
 pub fn color(hex_code: &str) -> Color {
     Color::hex(hex_code).unwrap()

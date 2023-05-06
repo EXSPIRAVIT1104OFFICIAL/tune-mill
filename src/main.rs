@@ -9,11 +9,11 @@ use bevy::{
 };
 use bevy_tweening::{lens::*, *};
 use lens::*;
-use num_enum::TryFromPrimitive;
+use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 use std::{convert::TryFrom, time::Duration};
 use styles::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, States, TryFromPrimitive)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq, Hash, Default, States, TryFromPrimitive)]
 #[repr(usize)]
 pub enum AppState {
     #[default]
@@ -73,7 +73,7 @@ fn main() {
         .add_system(component_animator_system::<BackgroundColor>)
         .add_system(setup_splash.in_schedule(OnEnter(AppState::Splash)))
         .add_system(setup_home.in_schedule(OnEnter(AppState::Home)))
-        .add_system(check_state_tween_complete)
+        .add_system(check_state_on_tween_complete_event)
         .run();
 }
 
@@ -81,41 +81,29 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2dBundle::default());
 
     commands
-        .spawn(NodeBundle {
-            style: CENTER,
+        .spawn(ImageBundle {
+            image: UiImage {
+                texture: asset_server.load("background.png"),
+                ..default()
+            },
             z_index: ZIndex::Global(0),
+            style: CENTER,
             ..default()
         })
-        .with_children(|parent| {
-            parent
-                .spawn(ImageBundle {
-                    image: UiImage {
-                        texture: asset_server.load("background.png"),
-                        ..default()
-                    },
-                    ..default()
-                })
-                .insert(Background);
-        });
+        .insert(Background);
 
     commands
-        .spawn(NodeBundle {
-            style: CENTER,
+        .spawn(ImageBundle {
+            image: UiImage {
+                texture: asset_server.load("grid.png"),
+                ..default()
+            },
+            background_color: BackgroundColor(Color::NONE),
             z_index: ZIndex::Global(1),
+            style: CENTER,
             ..default()
         })
-        .with_children(|parent| {
-            parent
-                .spawn(ImageBundle {
-                    image: UiImage {
-                        texture: asset_server.load("grid.png"),
-                        ..default()
-                    },
-                    background_color: BackgroundColor(Color::NONE),
-                    ..default()
-                })
-                .insert(Grid);
-        });
+        .insert(Grid);
 }
 
 fn setup_splash(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -156,66 +144,74 @@ fn setup_splash(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .insert(SubText);
         });
 
-    let start = Tween::new(
-        EaseFunction::QuinticInOut,
-        std::time::Duration::from_secs(2),
+    let start: Tween<BackgroundColor> = Tween::new(
+        EaseFunction::CubicIn,
+        Duration::from_secs_f32(0.25),
         BackgoundColorLens {
-            start: Color::WHITE,
-            end: Color::NONE,
+            start: color(PURE_WHITE),
+            end: color(NULL_WHITE),
         },
     )
     .with_repeat_count(RepeatCount::Finite(1));
     let end = Tween::new(
-        EaseFunction::QuinticInOut,
-        std::time::Duration::from_secs(2),
+        EaseFunction::CubicOut,
+        Duration::from_secs_f32(0.25),
         BackgoundColorLens {
-            start: Color::NONE,
-            end: Color::WHITE,
+            start: color(NULL_WHITE),
+            end: color(PURE_WHITE),
         },
     )
     .with_repeat_count(RepeatCount::Finite(1))
     .with_completed_event(AppState::Home as u64);
-    let seq = start.then(end);
+    let seq = Delay::new(Duration::from_secs_f32(0.5))
+        .then(start)
+        .then(Delay::new(Duration::from_secs(2)))
+        .then(end);
 
     commands
-        .spawn(NodeBundle {
-            style: CENTER,
-            z_index: ZIndex::Global(3),
-            ..default()
-        })
-        .with_children(|parent| {
-            parent
-                .spawn((
-                    ImageBundle {
-                        image: UiImage {
-                            texture: asset_server.load("background.png"),
-                            ..default()
-                        },
-                        background_color: BackgroundColor(Color::NONE),
-                        ..default()
-                    },
-                    Animator::<BackgroundColor>::new(seq),
-                ))
-                .insert(TextLayerHider);
-        });
+        .spawn((
+            ImageBundle {
+                image: UiImage {
+                    texture: asset_server.load("background.png"),
+                    ..default()
+                },
+                background_color: BackgroundColor(Color::WHITE),
+                z_index: ZIndex::Global(3),
+                style: CENTER,
+                ..default()
+            },
+            Animator::<BackgroundColor>::new(seq),
+        ))
+        .insert(TextLayerHider);
 }
 
-fn setup_home() {
-}
+fn setup_home() {}
 
-fn check_state_tween_complete(
+fn check_state_on_tween_complete_event(
     mut reader: EventReader<TweenCompleted>,
     app_state: Res<State<AppState>>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     for event in reader.iter() {
-        match AppState::try_from(event.user_data as usize) {
-            Ok(state) if app_state.0 != state => {
-                next_state.set(state.clone());
-                println!("switching from {:?} to {:?}", app_state.0, state.clone());
-            }
-            Ok(_) => println!("already in state: {:?}", app_state.0),
-            Err(_) => println!("no such state: {:?}", app_state.0),
+        change_state_to(
+            AppState::try_from(event.user_data as usize),
+            app_state.0,
+            &mut next_state,
+        );
+    }
+}
+
+fn change_state_to(
+    state: Result<AppState, TryFromPrimitiveError<AppState>>,
+    app_state: AppState,
+    next_state: &mut ResMut<NextState<AppState>>,
+) {
+    match state {
+        Ok(state) if app_state != state => {
+            next_state.set(state);
+            println!("switching from {:?} to {:?}", app_state, state);
         }
+        Ok(_) => println!("already in state: {:?}", app_state),
+        Err(_) => println!("no such state: {:?}", app_state),
     }
 }
