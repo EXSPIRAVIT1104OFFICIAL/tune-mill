@@ -14,6 +14,7 @@ bevy_time = "0.10.1"
 bevy_tweening = "0.7.0"
 midir = "0.9.1"
 num_enum = "0.6.1"
+pecs = "0.3.0"
 winit = "0.28.3"
 
 # Enable a small amount of optimization in debug mode
